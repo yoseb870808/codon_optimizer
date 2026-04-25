@@ -1,0 +1,71 @@
+# Codon Optimizer — Default Configuration
+# Override any value by creating a custom YAML and passing --config <path>
+
+# Reference translatome construction
+reference:
+  min_cds_length: 500           # Minimum CDS length in nucleotides to include
+  top_expressed_pct: 10         # Top N% of expressed genes (RNA-seq mode)
+  min_reference_genes: 30       # Warn if reference set has fewer genes
+  fallback_min_genes: 20        # Housekeeping mode: fall back to all CDS if fewer found
+
+# Housekeeping gene identification keywords (Mode B, no RNA-seq)
+# Matched against CDS 'product' qualifier (case-insensitive substring match)
+housekeeping_keywords:
+  ribosomal:
+    - "ribosomal protein"
+    - "30S ribosomal"
+    - "50S ribosomal"
+  translation:
+    - "elongation factor"
+    - "translation initiation factor"
+  chaperones:
+    - "chaperone"
+    - "chaperonin"
+    - "GroEL"
+    - "GroES"
+    - "DnaK"
+  core_metabolism:
+    - "glyceraldehyde-3-phosphate dehydrogenase"
+    - "enolase"
+    - "phosphoglycerate kinase"
+    - "pyruvate kinase"
+    - "fructose-bisphosphate aldolase"
+  rna_polymerase:
+    - "DNA-directed RNA polymerase"
+
+# Optimization settings
+optimization:
+  mode: "weighted"              # max_cai | weighted | harmonized
+  n_variants: 3                 # Number of variant sequences to generate
+  min_wi: 0.01                  # Floor for codons with zero count (avoid log(0))
+  harmonized_noise: 0.1         # Probability of stochastic sampling in harmonized mode
+  oversample_factor: 3          # Generate N * oversample_factor candidates, keep best N
+  repair_forbidden_motifs: true # Run local codon repair to eliminate forbidden motifs
+  use_default_forbidden: true   # If forbidden_motifs below is empty, use the built-in list
+
+# Forbidden motifs — each with a literal DNA pattern (or regex if regex=true).
+# When `use_default_forbidden` is true and this list is empty, the module-level
+# DEFAULT_FORBIDDEN_MOTIFS (restriction sites + polyA/polyT runs) is used.
+forbidden_motifs: []
+
+# Variant selection weights (composite score)
+variant_scoring:
+  cai_weight: 0.50              # Weight for CAI score
+  gc_weight: 0.30               # Weight for GC match to host
+  mrna_weight: 0.20             # Weight for mRNA stability score
+
+# Quality control thresholds
+qc:
+  gc_range: [0.25, 0.65]        # Acceptable overall GC fraction range
+  gc_window_size: 50            # Sliding window size for local GC analysis (nt)
+  gc_window_deviation: 0.15     # Flag if local GC deviates more than this from overall
+  max_homopolymer: 6            # Flag runs of identical bases longer than this
+  min_repeat_length: 12         # Flag direct repeats longer than this (nt)
+  mrna_5prime_window: 150       # Window size for 5' mRNA structure analysis (nt)
+  mrna_mfe_threshold: -30.0     # Flag if MFE below this (kcal/mol)
+
+# Output settings
+output:
+  dir: "output"                 # Default output directory
+  fasta_per_sequence: true      # Write one FASTA per input sequence
+  combined_fasta: true          # Also write combined recommended-only FASTA

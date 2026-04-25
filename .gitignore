@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Output (generated at runtime)
+output/
+output_*/
+data/
+sr7_cut/
+sr7_smoke_test/
+
+# Test fixtures generated on the fly
+tests/fixtures/
+
+# Large input data — tracked separately
+input/*.gbk
+input/*.xlsx
+input/*.txt
+!input/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codon-optimizer"
+version = "0.2.0"
+description = "Codon optimizer for non-model organisms — builds a custom Codon Usage Table from a GenBank genome (optionally weighted by RNA-seq expression) and reverse-translates target proteins/genes with biophysical QC."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Codon Optimizer Contributors" }]
+dependencies = [
+    "biopython>=1.83",
+    "pandas>=2.1",
+    "numpy>=1.24",
+    "openpyxl>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+mrna = ["ViennaRNA>=2.6"]
+test = ["pytest>=7.4"]
+
+[project.scripts]
+codon-optimizer = "run_optimizer:main"
+
+[tool.setuptools]
+packages = ["optimizer"]
+py-modules = ["run_optimizer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning:openpyxl.*",
+    "ignore::DeprecationWarning:pandas.*",
+]
