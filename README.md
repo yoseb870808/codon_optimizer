@@ -29,36 +29,51 @@ by the input files you provide.
   EcoRI, BamHI, HindIII, XhoI, NdeI, NcoI) and synthesis-unfriendly
   homopolymer runs (≥7 of A/T/G/C) are rewritten synonymously after
   optimization. Protein translation is preserved by construction.
+- **5′ mRNA structure repair.** Strong stem-loops in the first 150 nt
+  reduce ribosome loading; the optimizer detects them with ViennaRNA
+  (real ΔG calculation) and removes them through three combinable
+  strategies — *Approach A* (targeted, dot-bracket-driven codon repair),
+  *Approach B* (5′-region temperature flattening to preserve the natural
+  ribosome ramp), and *Approach E* (Metropolis–Hastings simulated
+  annealing). Both pre- and post-repair outputs are written for
+  side-by-side comparison.
 - **QC-aware oversampling.** The engine generates
   `n_variants × oversample_factor` candidates and returns the cleanest
-  `n_variants` ranked by `(no-forbidden-motifs, composite_score)`.
+  `n_variants` ranked by `(no-forbidden-motifs, no-strong-structure, composite_score)`.
 - **Biophysical QC.** Overall + sliding-window GC, homopolymer runs,
-  direct repeats, and 5′ mRNA secondary structure (ViennaRNA primary,
-  palindrome fallback).
+  direct repeats, and 5′ mRNA MFE via ViennaRNA `RNA.fold()` (mandatory
+  dependency, real thermodynamic calculation — no fallback heuristic).
 - **Reproducible.** `--seed N` makes every variant bit-reproducible via
   per-variant child seeds.
+- **Protein-identity invariant** asserted at three independent layers
+  (post-optimize, post-repair, end-of-pipeline sweep). Any non-synonymous
+  mutation aborts the pipeline rather than silently emitting a bad FASTA.
 - **Structured outputs** suitable for wet-lab hand-off: per-sequence
   multi-variant FASTA, combined recommended-only FASTA, metrics report
-  TSV, custom CUT TSV, per-position codon comparison TSV, and a
-  markdown run summary.
+  TSV, custom CUT TSV, per-position codon comparison TSV, mRNA-repair
+  side-by-side TSV, and a markdown run summary.
 
 ---
 
 ## Installation
 
 ```bash
-git clone <repo-url> codon_optimizer
+git clone https://github.com/yoseb870808/codon_optimizer.git
 cd codon_optimizer
 python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
-
-# Optional — ViennaRNA enables MFE-based mRNA structure QC:
-conda install -c bioconda viennarna
-# or: pip install ViennaRNA
 ```
 
-The tool runs without ViennaRNA and falls back to a palindrome-based
-hairpin heuristic.
+`requirements.txt` already pins ViennaRNA. The pip wheel works on
+Windows / Linux / macOS for Python 3.10–3.13. If the wheel is missing
+for your platform, fall back to:
+
+```bash
+conda install -c bioconda viennarna
+```
+
+ViennaRNA is **mandatory** — the pipeline imports `RNA` at startup and
+fails fast with install instructions if it's missing.
 
 Verify the install:
 
@@ -113,6 +128,8 @@ python run_optimizer.py \
 | `--output` |  | Output directory (created if missing). Default `./output/`. |
 | `--config` |  | User YAML that merges on top of `config_default.yaml`. |
 | `--seed` |  | Random seed for reproducibility. |
+| `--mrna-repair` |  | `off`, `targeted`, `annealing`, or `both` (default: `both`). Controls how strong 5′ structure is removed. |
+| `--no-pre-repair-outputs` |  | Skip writing the `pre_repair/` subdir + `mrna_repair_comparison.tsv`. Default is to write both. |
 | `--verbose` / `-v` |  | Debug-level logging. |
 
 ---
@@ -188,13 +205,23 @@ Everything goes into `--output`. Per-run layout:
 
 ```
 output/
-├── combined_recommended.fasta       # One recommended variant per input
+├── combined_recommended.fasta       # Final recommended variant per input (post-repair)
 ├── <gene>_optimized.fasta           # All variants for <gene>, recommended first
 ├── <gene>_codon_comparison.tsv      # Per-position diff vs. input (DNA input only)
 ├── codon_usage_table.tsv            # 64-row host CUT + comment header
-├── optimization_report.tsv          # One row per input: CAI, GC, QC, motif flags
-└── summary.md                       # Human-readable markdown run summary
+├── optimization_report.tsv          # One row per input: CAI, GC, MFE, QC, motif flags
+├── mrna_repair_comparison.tsv       # Side-by-side: pre vs post repair MFE/CAI per input
+├── summary.md                       # Human-readable markdown run summary
+└── pre_repair/                      # Same files as above, computed BEFORE the repair pass
+    ├── combined_recommended.fasta
+    ├── <gene>_optimized.fasta
+    └── optimization_report.tsv
 ```
+
+The `pre_repair/` subdir lets you see what the optimizer would have
+recommended without the 5′ structure repair step. Use
+`--no-pre-repair-outputs` to skip writing it, and use
+`--mrna-repair off` to disable the repair pass entirely.
 
 `optimization_report.tsv` columns:
 
@@ -205,6 +232,15 @@ original_gc, recommended_gc, host_gc,
 homopolymer_count, repeat_count, mfe_5prime, has_strong_structure,
 forbidden_motif_count, forbidden_motifs,
 composite_score, optimization_mode, qc_pass
+```
+
+`mrna_repair_comparison.tsv` columns:
+
+```
+sequence_name, repair_mode, repair_method_used, repair_attempts,
+repair_succeeded, pre_cai, post_cai, delta_cai,
+pre_gc, post_gc, pre_mfe_5prime, post_mfe_5prime, delta_mfe,
+pre_strong_structure, post_strong_structure
 ```
 
 ---
@@ -242,22 +278,85 @@ small genes.
 
 ---
 
+## 5′ mRNA structure repair
+
+Strong secondary structure in the first ~150 nt of an mRNA blocks
+ribosome loading and is one of the strongest predictors of low protein
+expression in bacteria (Kudla et al. 2009, Goodman et al. 2013). The
+optimizer measures the 5′ minimum free energy with ViennaRNA on every
+candidate, flags variants where MFE ≤ `qc.mrna_mfe_threshold`
+(default −30 kcal/mol), and tries to repair them through a combination
+of three strategies — all of which preserve the protein translation by
+construction.
+
+| Strategy | What it does | When it kicks in |
+|---|---|---|
+| **A — targeted repair** | Parses the dot-bracket structure, identifies codons that participate in stems, synonymously rewrites them in CAI-preferred order, refolds, repeats. | After candidate generation, only on flagged variants. |
+| **B — 5′-region temperature** | Flattens the per-AA codon distribution for the first N codons (default 30). Less probability mass on the most-biased codons preserves the natural slow-codon "ramp" (Tuller et al. 2010), which prevents most strong 5′ structure from forming in the first place. | During candidate generation in `weighted` mode. |
+| **E — simulated annealing** | Metropolis–Hastings search over synonymous-codon space with energy `max(0, threshold − MFE) + λ·(1 − CAI)`. Slower but escapes local minima that block A. | Used by `--mrna-repair both` only when A fails to cross the threshold. |
+
+Configure via `--mrna-repair {off,targeted,annealing,both}` or the
+`mrna_repair` block in `config_default.yaml`. Default is `both`, which
+is the right choice for most users: A handles 95 % of cases cheaply, E
+catches the rest.
+
+The `pre_repair/` subdir + `mrna_repair_comparison.tsv` show exactly
+what each strategy did for every gene. Example:
+
+```
+sequence_name  repair_method_used  pre_mfe  post_mfe  delta_mfe  delta_cai
+ERG8_Scer      targeted            -46.1    -29.4     +16.7      +0.001
+atoB_Ecoli     targeted            -29.4    -28.9     +0.5        0.000
+ERG12_Scer     skipped_already_good
+…
+```
+
+### Wet-lab complements
+
+The optimizer fixes **CDS-internal** structure. For maximum protein
+yield, pair it with two upstream interventions:
+
+- **RBS Calculator** (Salis Lab) — design the 5′ UTR / Shine-Dalgarno
+  for your target translation initiation rate.
+- **Self-cleaving ribozyme** (RiboJ; Lou et al. 2012) inserted between
+  promoter and 5′ UTR — creates a defined, sequence-clean 5′ end and
+  decouples the CDS from upstream context. Doesn't touch CDS-internal
+  structure, but eliminates promoter-context-induced variability.
+
+### Protein-identity invariant
+
+Every code path that mutates a candidate sequence does so via
+**synonymous substitution only**. This is enforced at three independent
+layers:
+
+1. After every per-variant repair call (`pipeline.py` line ~270)
+2. After each `optimize()` call (line ~205)
+3. End-of-pipeline sweep over every variant in every output bucket
+   (line ~360) — runs *just before* any FASTA is written.
+
+A non-synonymous mutation anywhere in the pipeline raises
+`RuntimeError: PROTEIN INTEGRITY VIOLATION` and aborts. The
+`tests/test_protein_integrity.py` suite includes a deliberate
+corruption test that confirms the assertion fires correctly.
+
+---
+
 ## Architecture
 
 ```
 optimizer/
 ├── input_handler.py        Parse GenBank, Excel, FASTA, config
 ├── reference_builder.py    Reference translatome + CUT construction
-├── sequence_optimizer.py   Three modes + oversampling + ranking
+├── sequence_optimizer.py   Three modes + oversampling + ranking + 5'-region temperature
 ├── sequence_repair.py      Forbidden-motif detection + local repair
-├── quality_control.py      GC, homopolymer, repeat, mRNA structure
+├── mrna_repair.py          Targeted + simulated-annealing 5' MFE repair
+├── quality_control.py      GC, homopolymer, repeat, mRNA structure (mandatory ViennaRNA)
 ├── metrics.py              CAI, Nc, codon comparison, composite score
 ├── report_generator.py     FASTA, TSV, markdown writers
-├── pipeline.py             End-to-end orchestration
+├── pipeline.py             End-to-end orchestration + protein-identity invariants
 └── utils.py                Genetic code, translate, GC, RC
 
-tests/                      105 tests across 8 suites
-scripts/                    One-off helpers (e.g. RNA-seq reshape)
+tests/                      122 tests across 11 suites
 ```
 
 ---
@@ -268,7 +367,7 @@ scripts/                    One-off helpers (e.g. RNA-seq reshape)
 python -m pytest tests/ -v
 ```
 
-108 tests covering every module plus end-to-end and CLI integration
+122 tests covering every module plus end-to-end and CLI integration
 cases. Mock GenBank / Excel / FASTA fixtures are generated on the fly
 into `tests/fixtures/`. ViennaRNA is a hard dependency, so all tests
 require a working `RNA.fold()`.
