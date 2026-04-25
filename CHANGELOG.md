@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-04-25
+
+### Changed (BREAKING)
+- **ViennaRNA is now mandatory.** The palindrome-scan fallback has been
+  removed. Importing `optimizer.quality_control` raises `ImportError`
+  with install instructions if `RNA` (the ViennaRNA Python binding) is
+  missing. Install with `pip install ViennaRNA` (Windows / Linux / macOS
+  wheels available for Python 3.10–3.13) or `conda install -c bioconda
+  viennarna`.
+- Variant ranking now uses the actual `RNA.fold()` MFE: the optimizer
+  ranks candidates by `(no-forbidden-motifs, no-strong-structure,
+  composite_score)`. The composite score now consumes the MFE term
+  (previously a no-op when ViennaRNA was unavailable).
+- `mfe_5prime` and `has_strong_structure` columns in
+  `optimization_report.tsv` now always carry real values.
+
+### Added
+- Per-variant fields `mfe_5prime`, `mrna_structure` (dot-bracket), and
+  `has_strong_structure` on every variant dict returned by `optimize()`.
+- Tests now exercise real `RNA.fold` calls on poly-A, GC-rich
+  hairpins, and threshold sensitivity.
+
+### Removed
+- `_palindrome_scan` and the `VIENNARNA_AVAILABLE` flag in
+  `quality_control.py`.
+
 ## [0.2.0] — 2026-04-24
 
 ### Added

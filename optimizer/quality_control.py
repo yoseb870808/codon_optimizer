@@ -5,19 +5,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .utils import gc_content, reverse_complement
+from .utils import gc_content
 
 logger = logging.getLogger(__name__)
 
-try:  # pragma: no cover — import side effect
+try:
     import RNA as _vrna  # type: ignore
-    VIENNARNA_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    _vrna = None
-    VIENNARNA_AVAILABLE = False
-    logger.info(
-        "ViennaRNA not found; mRNA structure QC will use simple hairpin-scan fallback."
-    )
+except ImportError as exc:  # pragma: no cover — explicit hard requirement
+    raise ImportError(
+        "ViennaRNA is required for codon_optimizer. Install with one of:\n"
+        "    pip install ViennaRNA           (Windows / Linux / macOS wheels available)\n"
+        "    conda install -c bioconda viennarna\n"
+        "Then verify with:  python -c \"import RNA; print(RNA.fold('GCGCGC'))\""
+    ) from exc
 
 
 def check_gc_content(
@@ -153,111 +153,56 @@ def check_repeats(sequence: str, min_length: int = 12) -> list[dict[str, Any]]:
     return hits
 
 
-def _palindrome_scan(
-    seq: str,
-    min_stem: int = 5,
-    max_stem: int = 20,
-    max_loop: int = 20,
-) -> list[dict[str, Any]]:
-    """Find inverted-repeat pairs (stem-loop candidates).
-
-    Search for pairs ``seq[i:i+L]`` and ``seq[j:j+L]`` where the second block
-    is the reverse complement of the first and the two blocks are separated
-    by a loop of 0..``max_loop`` nt. For each starting position we report the
-    match with the shortest loop and greatest stem length.
-    """
-    seq = seq.upper()
-    n = len(seq)
-    hits: list[dict[str, Any]] = []
-    reported: set[int] = set()
-
-    for i in range(n - 2 * min_stem):
-        if i in reported:
-            continue
-        for loop in range(0, max_loop + 1):
-            j = i + min_stem + loop
-            if j + min_stem > n:
-                break
-            # Does a min_stem match start here?
-            if seq[i:i + min_stem] != reverse_complement(seq[j:j + min_stem]):
-                continue
-            # Extend as long as pair still reverse-complements
-            best_len = min_stem
-            for L in range(min_stem + 1, max_stem + 1):
-                if i + L > j or j + L > n:
-                    break
-                if seq[i:i + L] == reverse_complement(seq[j:j + L]):
-                    best_len = L
-                else:
-                    break
-            hits.append({
-                "position": i,
-                "length": best_len,
-                "sequence": seq[i:i + best_len],
-                "loop": loop,
-                "partner_position": j,
-            })
-            reported.add(i)
-            break
-    return hits
-
-
 def check_mrna_structure(
     sequence: str,
     window_5prime: int = 150,
     mfe_threshold: float = -30.0,
 ) -> dict[str, Any]:
-    """Predict secondary-structure strength of the 5' end.
+    """Predict secondary-structure strength of the 5' end via ViennaRNA.
 
-    Primary path (ViennaRNA installed) runs RNA.fold over the first
-    ``window_5prime`` nucleotides. Fallback does a palindrome scan for
-    candidate hairpin stems. Flags ``has_strong_structure = True`` when
-    MFE ≤ threshold (primary) or when any palindrome ≥ 8 bp is found
-    (fallback).
+    Folds the first ``window_5prime`` nucleotides with ``RNA.fold`` and
+    reports MFE (kcal/mol), the dot-bracket structure string, and whether
+    the MFE crosses ``mfe_threshold`` (i.e. structure is strong enough to
+    impede ribosome loading).
+
+    Args:
+        sequence: Full DNA sequence; only the first ``window_5prime`` nt
+            are folded. T is transparently converted to U for folding.
+        window_5prime: Length of the 5' window to fold.
+        mfe_threshold: MFE (kcal/mol) at or below which
+            ``has_strong_structure`` is True. Default -30.0.
+
+    Returns:
+        Dict with ``method`` (always ``"viennarna"``), ``mfe``,
+        ``structure``, ``has_strong_structure``, and ``warning``.
+
+    Raises:
+        RuntimeError: If ViennaRNA fails to fold the window (rare; typically
+            only on malformed input).
     """
     window = sequence[:window_5prime]
-    warning: str | None = None
     if not window:
         return {
-            "method": "viennarna" if VIENNARNA_AVAILABLE else "fallback",
+            "method": "viennarna",
             "mfe": None,
             "structure": None,
             "has_strong_structure": False,
-            "hairpins": [],
             "warning": "Empty sequence",
         }
 
-    if VIENNARNA_AVAILABLE:
-        try:
-            structure, mfe = _vrna.fold(window.replace("T", "U"))
-        except Exception as exc:  # pragma: no cover — robust to rare VRNA errors
-            logger.warning("ViennaRNA fold failed (%s); falling back to palindrome scan", exc)
-            hairpins = _palindrome_scan(window)
-            return {
-                "method": "fallback",
-                "mfe": None,
-                "structure": None,
-                "has_strong_structure": any(h["length"] >= 8 for h in hairpins),
-                "hairpins": hairpins,
-                "warning": f"ViennaRNA error: {exc}",
-            }
-        return {
-            "method": "viennarna",
-            "mfe": mfe,
-            "structure": structure,
-            "has_strong_structure": mfe <= mfe_threshold,
-            "hairpins": [],
-            "warning": warning,
-        }
+    try:
+        structure, mfe = _vrna.fold(window.replace("T", "U"))
+    except Exception as exc:
+        raise RuntimeError(
+            f"ViennaRNA fold failed on window of length {len(window)}: {exc}"
+        ) from exc
 
-    hairpins = _palindrome_scan(window)
     return {
-        "method": "fallback",
-        "mfe": None,
-        "structure": None,
-        "has_strong_structure": any(h["length"] >= 8 for h in hairpins),
-        "hairpins": hairpins,
-        "warning": "ViennaRNA not installed — using palindrome-based heuristic",
+        "method": "viennarna",
+        "mfe": float(mfe),
+        "structure": structure,
+        "has_strong_structure": float(mfe) <= mfe_threshold,
+        "warning": None,
     }
 
 

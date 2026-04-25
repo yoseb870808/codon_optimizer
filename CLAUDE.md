@@ -3,7 +3,7 @@
 ## Project Identity
 **Name:** Codon Optimizer for Non-Model Organisms
 **Type:** Standalone Python CLI tool (pip-installable, GitHub-distributable)
-**Location:** `D:\Dropbox\2020_MIT\B_megaterium_SR7\ALE\_SR7_ALE_computation_analysis\Sec3_literature_search\codon_optimizer\`
+**Location:** project root
 
 ## What This Tool Does
 Takes a host organism's GenBank genome file + optional RNA-seq expression data → builds a custom Codon Usage Table → reverse-translates target protein or DNA sequences into host-optimized DNA using weighted stochastic codon selection → runs biophysical quality control → outputs optimized FASTA + metrics report.
@@ -108,7 +108,7 @@ After all modules are built and tested individually, run a **full integration te
   - quality_control: all QC checks including ViennaRNA fallback
   - metrics: CAI calculation verified against known values
   - report_generator: output file existence and format validation
-- Create test fixtures during the build (mock .gbk, .xlsx, .fasta files) — do NOT rely on real SR7 data for tests
+- Create test fixtures during the build (mock .gbk, .xlsx, .fasta files) — do NOT rely on any user-supplied real biological data for tests
 
 ---
 

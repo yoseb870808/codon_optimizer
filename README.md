@@ -138,9 +138,9 @@ locus_tag | RPKM_rep1 | RPKM_rep2 | RPKM_rep3 | RPKM_average
 Locus tags must match the GenBank CDS tags. Match rate < 80 % triggers
 a warning; < 10 % is fatal (almost certainly a file mismatch).
 
-Need to reshape an RNA-seq file that doesn't match this schema? See
-`scripts/prepare_sr7_expression.py` for an example that renames columns
-and coerces comma-quoted numbers to floats.
+Need to reshape an RNA-seq file that doesn't match this schema? Rename
+the replicate columns to `RPKM_rep1` / `RPKM_rep2` / `RPKM_rep3`,
+strip thousands separators, and re-export to `.xlsx`.
 
 ### Target sequences (`--target`)
 
@@ -268,55 +268,48 @@ scripts/                    One-off helpers (e.g. RNA-seq reshape)
 python -m pytest tests/ -v
 ```
 
-105 tests covering every module plus end-to-end and CLI integration
+108 tests covering every module plus end-to-end and CLI integration
 cases. Mock GenBank / Excel / FASTA fixtures are generated on the fly
-into `tests/fixtures/`.
+into `tests/fixtures/`. ViennaRNA is a hard dependency, so all tests
+require a working `RNA.fold()`.
 
 ---
 
-## Worked example: *Priestia megaterium* SR7
+## Worked example
 
-A real-world run is shipped under `input/`:
-
-- `Pmegaterium_SR7_tss.gbk` — annotated *B. megaterium* SR7 genome (3 replicons, 5,531 valid CDS)
-- `SR7_anaerobic_RNA.xlsx` — anaerobic RNA-seq triplicates
-
-First reshape the expression file to the expected schema:
+A two-step run on any host genome:
 
 ```bash
-python scripts/prepare_sr7_expression.py
+# 1. Verify your install
+python -m pytest tests/ -v
+python run_optimizer.py --help
+
+# 2. Run the optimizer on your inputs
+python run_optimizer.py \
+    --genome   input/host.gbk \
+    --rnaseq   input/expression.xlsx \
+    --target   input/my_proteins.fasta \
+    --variants 3 --seed 42 \
+    --output   output/
 ```
 
-Then build the SR7 CUT standalone (optional, for inspection):
+After the run, inspect:
 
-```bash
-python scripts/build_sr7_cut.py
-# → sr7_cut/codon_usage_table.tsv + reference_gene_list.tsv
-```
+- `output/summary.md` — human-readable run summary
+- `output/optimization_report.tsv` — per-input metrics (CAI, GC, MFE, QC flags)
+- `output/codon_usage_table.tsv` — the host CUT used for optimization
+- `output/combined_recommended.fasta` — recommended variant per input
+- `output/<gene>_optimized.fasta` — all variants per input
+- `output/<gene>_codon_comparison.tsv` — per-position diff vs. input (DNA input only)
 
-Or just run the full pipeline on a FASTA of targets
-(e.g. `input/MVA.fasta`, 7 MVA-pathway enzymes from *E. coli* and *S. cerevisiae*):
+Two example FASTAs are bundled under `examples/` for a quick smoke test:
 
 ```bash
 python run_optimizer.py \
-    --genome   input/Pmegaterium_SR7_tss.gbk \
-    --rnaseq   input/SR7_anaerobic_RNA_normalized.xlsx \
-    --target   input/MVA.fasta \
-    --variants 3 --seed 42 \
-    --output   output_MVA/
+    --genome  <your_host.gbk> \
+    --target  examples/example_protein.fasta \
+    --output  output_smoke/
 ```
-
-Representative results on the 7 MVA enzymes:
-
-| Gene        | Length (AA) | Original → Recommended CAI | GC (%) | QC |
-|---|---|---|---|---|
-| atoB (E. coli) | 394  | 0.58 → 0.72 | 44.9 | ✓ |
-| ERG8         | 451  | 0.66 → 0.73 | 40.3 | ✓ |
-| ERG12        | 443  | 0.60 → 0.71 | 38.5 | ✓ |
-| ERG13        | 491  | 0.63 → 0.72 | 39.0 | ✓ |
-| ERG19        | 396  | 0.60 → 0.73 | 40.1 | ✓ |
-| HMG1         | 1054 | 0.63 → 0.72 | 39.7 | ✓ |
-| IDI1         | 288  | 0.67 → 0.74 | 37.3 | ⚠ (one 12-bp repeat) |
 
 ---
 

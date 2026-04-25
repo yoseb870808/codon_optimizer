@@ -10,21 +10,37 @@ build/
 .coverage
 htmlcov/
 
-# Output (generated at runtime)
+# All run outputs
 output/
 output_*/
 data/
-sr7_cut/
-sr7_smoke_test/
+*_cut/
+*_smoke_test/
 
 # Test fixtures generated on the fly
 tests/fixtures/
 
-# Large input data — tracked separately
-input/*.gbk
-input/*.xlsx
-input/*.txt
+# Block ALL user input data — only public examples in examples/ are tracked
+input/
 !input/.gitkeep
+
+# Local-only files: anything under _private/ or _local/ is never committed
+_private/
+_local/
+private/
+local/
+
+# Real biological inputs and run artifacts (defence in depth)
+*.gbk
+*.gb
+*.xlsx
+*.xls
+input/
+input_*/
+output/
+output_*/
+data/
+data_*/
 
 # IDE
 .vscode/

@@ -32,7 +32,7 @@ python -m pytest tests/ -v
 - Add your test to the appropriate `tests/test_<module>.py` or create a
   new one if the scope is new.
 - End-to-end behavior belongs in `tests/test_integration.py`.
-- Real-data regression tests belong in `tests/test_sr7_regression.py`
+- Real-data regression tests belong in `tests/test_real_genome_regression.py`
   (auto-skipped when inputs are absent).
 - Never delete a test to "make it pass." If a test is wrong, fix the
   test and document why in the PR description.

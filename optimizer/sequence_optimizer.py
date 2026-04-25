@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .metrics import calculate_cai, composite_score
+from .quality_control import check_mrna_structure
 from .reference_builder import build_codon_usage_table
 from .sequence_repair import DEFAULT_FORBIDDEN_MOTIFS, repair_sequence
 from .utils import AA_TO_CODONS, CODON_TABLE_STANDARD, chunk_codons, gc_content
@@ -137,16 +138,24 @@ def optimize(
     else:
         unresolved_per_variant = [[] for _ in candidates]
 
+    # Per-variant 5' mRNA structure (used to score and to surface MFE)
+    qc_cfg = cfg.get("qc", {})
+    mfe_threshold = qc_cfg.get("mrna_mfe_threshold", -30.0)
+    mrna_window = qc_cfg.get("mrna_5prime_window", 150)
+
     # Score each candidate
     scored: list[dict] = []
     for i, dna in enumerate(candidates):
         cai = calculate_cai(dna, codon_table)
         gc_v = gc_content(dna)
+        mrna = check_mrna_structure(dna, window_5prime=mrna_window, mfe_threshold=mfe_threshold)
+        mfe_value = mrna["mfe"]
         score = composite_score(
             cai=cai,
             gc_content_value=gc_v,
             host_gc=host_gc_value,
-            mfe=None,
+            mfe=mfe_value,
+            mfe_threshold=mfe_threshold,
             weights=weights,
         )
         # Penalty for unresolved forbidden motifs (small, subtractive)
@@ -158,6 +167,9 @@ def optimize(
                 "dna_sequence": dna,
                 "cai_score": cai,
                 "gc_content": gc_v,
+                "mfe_5prime": mfe_value,
+                "mrna_structure": mrna["structure"],
+                "has_strong_structure": mrna["has_strong_structure"],
                 "mode": mode,
                 "variant_number": i + 1,
                 "composite_score": final_score,
@@ -168,9 +180,11 @@ def optimize(
 
     scored.sort(
         key=lambda v: (
-            # Prefer variants with no forbidden hits
+            # First: no unresolved forbidden motifs
             len(v["forbidden_hits"]) == 0,
-            # Then by composite score
+            # Second: no strong 5' mRNA structure
+            not v["has_strong_structure"],
+            # Third: composite score
             v["composite_score"],
         ),
         reverse=True,
