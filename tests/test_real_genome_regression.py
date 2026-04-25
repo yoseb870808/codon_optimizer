@@ -26,9 +26,17 @@ def _first(glob: str) -> Path | None:
     return matches[0] if matches else None
 
 
+def _preferred_xlsx() -> Path | None:
+    """Prefer *_normalized.xlsx over plain .xlsx when both are present."""
+    normalized = sorted(INPUT_DIR.glob("*_normalized.xlsx"))
+    if normalized:
+        return normalized[0]
+    return _first("*.xlsx")
+
+
 GENOME = _first("*.gbk") or _first("*.gb")
 TARGETS = _first("*.fasta") or _first("*.fa")
-RNASEQ = _first("*.xlsx")
+RNASEQ = _preferred_xlsx()
 
 
 pytestmark = pytest.mark.skipif(

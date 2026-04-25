@@ -33,6 +33,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default=None, help="Custom config YAML (merged over defaults)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument(
+        "--mrna-repair",
+        choices=["off", "targeted", "annealing", "both"],
+        default=None,
+        help="5' mRNA structure repair strategy when MFE crosses threshold "
+             "(default: from config — usually 'both')",
+    )
+    parser.add_argument(
+        "--no-pre-repair-outputs",
+        action="store_true",
+        help="Skip writing the pre_repair/ subdirectory and comparison TSV "
+             "(by default both pre- and post-repair results are written)",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Verbose logging",
@@ -60,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
             config_path=args.config,
             seed=args.seed,
             source_genome_path=args.source_genome,
+            mrna_repair_mode=args.mrna_repair,
+            write_pre_repair_outputs=(not args.no_pre_repair_outputs),
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

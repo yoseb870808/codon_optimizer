@@ -42,6 +42,23 @@ optimization:
   oversample_factor: 3          # Generate N * oversample_factor candidates, keep best N
   repair_forbidden_motifs: true # Run local codon repair to eliminate forbidden motifs
   use_default_forbidden: true   # If forbidden_motifs below is empty, use the built-in list
+  # Approach B: flatten the codon-probability distribution for the first
+  # n_terminal_codons codons. Higher temperature → more uniform sampling,
+  # which preserves the natural N-terminal "ramp" of slow codons that
+  # helps avoid strong 5' mRNA structure (Tuller et al. 2010).
+  n_terminal_temperature: 1.5   # 1.0 = no flattening; 2.0–3.0 = strong flattening
+  n_terminal_codons: 30         # 0 disables Approach B
+
+# 5' mRNA secondary-structure repair (Approach A and/or E)
+# Runs only on variants whose 5' MFE crosses qc.mrna_mfe_threshold.
+mrna_repair:
+  mode: "both"                  # off | targeted | annealing | both
+  targeted_max_attempts: 30     # max codon-substitution rounds (Approach A)
+  annealing_iterations: 200     # Metropolis-Hastings steps (Approach E)
+  annealing_t_start: 5.0        # SA starting temperature
+  annealing_t_end: 0.05         # SA final temperature
+  cai_lambda: 3.0               # CAI penalty weight in SA energy
+  write_pre_repair_outputs: true # Write a pre_repair/ subdir + comparison TSV
 
 # Forbidden motifs — each with a literal DNA pattern (or regex if regex=true).
 # When `use_default_forbidden` is true and this list is empty, the module-level

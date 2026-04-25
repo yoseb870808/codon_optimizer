@@ -91,6 +91,8 @@ def optimize(
     }
     harm_noise = opt_cfg.get("harmonized_noise", 0.1)
     oversample = max(1, int(opt_cfg.get("oversample_factor", 3)))
+    n_term_temp = float(opt_cfg.get("n_terminal_temperature", 1.0))
+    n_term_codons = int(opt_cfg.get("n_terminal_codons", 0))
     forbidden_motifs = cfg.get("forbidden_motifs") or []
     if not forbidden_motifs and opt_cfg.get("use_default_forbidden", True):
         forbidden_motifs = DEFAULT_FORBIDDEN_MOTIFS
@@ -116,6 +118,8 @@ def optimize(
             n_variants=n_to_generate,
             base_seed=seed,
             harm_noise=harm_noise,
+            n_terminal_temperature=n_term_temp,
+            n_terminal_codons=n_term_codons,
         )
 
     if append_stop:
@@ -217,13 +221,19 @@ def _generate_candidates(
     n_variants: int,
     base_seed: int | None,
     harm_noise: float,
+    n_terminal_temperature: float = 1.0,
+    n_terminal_codons: int = 0,
 ) -> list[str]:
     """Generate ``n_variants`` candidate DNA sequences in ``mode``."""
     candidates: list[str] = []
     if mode == "weighted":
         for i in range(n_variants):
             rng = np.random.default_rng(_derive_seed(base_seed, i, "weighted"))
-            candidates.extend(_optimize_weighted(protein_seq, by_aa, 1, rng))
+            candidates.extend(_optimize_weighted(
+                protein_seq, by_aa, 1, rng,
+                n_terminal_temperature=n_terminal_temperature,
+                n_terminal_codons=n_terminal_codons,
+            ))
     elif mode == "harmonized":
         if not original_dna:
             raise ValueError("harmonized mode requires DNA input (original_dna)")
@@ -263,14 +273,40 @@ def _optimize_max_cai(
     return "".join(out)
 
 
+def _flatten_probs(probs: np.ndarray, temperature: float) -> np.ndarray:
+    """Apply temperature to a probability vector.
+
+    ``temperature == 1.0`` returns ``probs`` unchanged. Higher values
+    flatten the distribution (more uniform sampling); lower values sharpen
+    it. Computed as ``softmax(log(p) / T)``.
+    """
+    if temperature == 1.0 or probs.size == 0:
+        return probs
+    eps = 1e-12
+    log_p = np.log(np.clip(probs, eps, 1.0)) / max(temperature, eps)
+    new_p = np.exp(log_p - log_p.max())
+    s = new_p.sum()
+    return new_p / s if s > 0 else probs
+
+
 def _optimize_weighted(
     protein_seq: str,
     by_aa: dict[str, list[tuple[str, float]]],
     n_variants: int,
     rng: np.random.Generator,
+    n_terminal_temperature: float = 1.0,
+    n_terminal_codons: int = 0,
 ) -> list[str]:
-    # Pre-compute probability vectors per amino acid
-    aa_probs: dict[str, tuple[list[str], np.ndarray]] = {}
+    """Stochastic weighted sampling with optional 5'-region temperature.
+
+    For codons at index ``< n_terminal_codons`` the per-AA probability
+    distribution is flattened by ``n_terminal_temperature`` (Approach B —
+    preserves the natural N-terminal "ramp" of slow codons that helps
+    avoid strong 5' mRNA structure).
+    """
+    # Pre-compute base + flattened probability vectors per amino acid
+    aa_probs_base: dict[str, tuple[list[str], np.ndarray]] = {}
+    aa_probs_flat: dict[str, tuple[list[str], np.ndarray]] = {}
     for aa, pairs in by_aa.items():
         if aa == "*":
             continue
@@ -280,15 +316,21 @@ def _optimize_weighted(
             probs = np.ones_like(weights) / len(weights)
         else:
             probs = weights / weights.sum()
-        aa_probs[aa] = (codons, probs)
+        aa_probs_base[aa] = (codons, probs)
+        aa_probs_flat[aa] = (codons, _flatten_probs(probs, n_terminal_temperature))
+
+    use_temperature = n_terminal_codons > 0 and n_terminal_temperature != 1.0
 
     variants: list[str] = []
     for _ in range(max(1, n_variants)):
         out: list[str] = []
-        for aa in protein_seq:
-            if aa not in aa_probs:
+        for i, aa in enumerate(protein_seq):
+            if aa not in aa_probs_base:
                 raise ValueError(f"Unknown amino acid '{aa}' in protein sequence")
-            codons, probs = aa_probs[aa]
+            if use_temperature and i < n_terminal_codons:
+                codons, probs = aa_probs_flat[aa]
+            else:
+                codons, probs = aa_probs_base[aa]
             out.append(rng.choice(codons, p=probs))
         variants.append("".join(out))
     return variants

@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-04-25
+
+### Safety
+- **Protein-identity invariant enforced at three independent layers**:
+  (1) immediately after every per-variant repair call, (2) immediately
+  after `optimize()` returns, (3) a final end-of-pipeline sweep over
+  every pre- and post-repair variant before any FASTA is written. Any
+  non-synonymous mutation aborts the pipeline with
+  ``RuntimeError: PROTEIN INTEGRITY VIOLATION`` instead of silently
+  emitting a corrupted sequence.
+- **Post-repair staleness fixed.** After mRNA repair the pipeline
+  refreshes the dot-bracket structure, recomputes the composite score
+  with the new MFE, re-checks forbidden motifs (repair could introduce
+  new restriction sites), and renumbers `variant_number` so the report
+  TSV and FASTA agree on which variant is which.
+- 6 new tests in ``tests/test_protein_integrity.py`` including a
+  deliberate-corruption test that confirms the assertion fires when
+  fed a non-synonymous mutation.
+
+### Added
+- **Approach A — targeted 5' structure repair.** New
+  ``optimizer/mrna_repair.py`` parses the ViennaRNA dot-bracket structure,
+  identifies codons that participate in 5'-window stems, and synonymously
+  rewrites them in CAI-preferred order until MFE crosses
+  ``mrna_mfe_threshold`` or the attempt cap is reached.
+- **Approach B — N-terminal codon-temperature flattening.** New config
+  knobs ``optimization.n_terminal_temperature`` (default 1.5) and
+  ``optimization.n_terminal_codons`` (default 30). The first N codons are
+  sampled with a flatter probability distribution, preserving the natural
+  ribosome ramp (Tuller et al. 2010) and dramatically reducing the rate
+  at which strong 5' structure forms in the first place.
+- **Approach E — simulated-annealing 5' structure repair.** Metropolis–
+  Hastings search over synonymous-codon space with energy
+  ``E = max(0, threshold - MFE) + λ · (1 - CAI)``. Slower than A but
+  escapes local minima.
+- **Dispatcher.** ``mrna_repair.mode = off | targeted | annealing | both``.
+  ``both`` runs A first, falls back to E only if A fails.
+- **Dual outputs.** Pipeline writes a ``pre_repair/`` subdirectory with
+  the un-repaired variants alongside the final outputs, plus a
+  side-by-side ``mrna_repair_comparison.tsv`` showing
+  ``pre_mfe_5prime / post_mfe_5prime / delta_mfe / delta_cai`` per gene.
+  Disable with ``--no-pre-repair-outputs``.
+- New CLI flags ``--mrna-repair {off,targeted,annealing,both}`` and
+  ``--no-pre-repair-outputs``.
+- 8 new tests in ``tests/test_mrna_repair.py`` (real ``RNA.fold`` calls).
+
+### Changed
+- Variant ranking still uses ``(no-forbidden, no-strong-structure, score)``
+  but is re-applied after the repair pass — a candidate previously
+  rejected for its structure may now win.
+- ``optimization_report.tsv`` columns unchanged; the new
+  ``mrna_repair_comparison.tsv`` carries the repair-specific data.
+
 ## [0.3.0] — 2026-04-25
 
 ### Changed (BREAKING)

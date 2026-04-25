@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codon-optimizer"
-version = "0.3.0"
+version = "0.4.0"
 description = "Codon optimizer for non-model organisms — builds a custom Codon Usage Table from a GenBank genome (optionally weighted by RNA-seq expression) and reverse-translates target proteins/genes with biophysical QC."
 readme = "README.md"
 requires-python = ">=3.10"
