@@ -31,6 +31,81 @@ REQUIRED_EXPRESSION_COLUMNS = [
     "RPKM_average",
 ]
 
+# Common column-name variants the parser auto-renames to canonical form.
+# Match is case-insensitive against the lowercased column header.
+EXPRESSION_COLUMN_ALIASES: dict[str, list[str]] = {
+    "locus_tag": ["locus_tag", "locus", "gene_id", "geneid", "gene", "id", "tag"],
+    "RPKM_rep1": ["rpkm_rep1", "rpkm_wt1", "rpkm_1", "rpkm1",
+                  "rep1", "wt1", "replicate_1", "replicate1"],
+    "RPKM_rep2": ["rpkm_rep2", "rpkm_wt2", "rpkm_2", "rpkm2",
+                  "rep2", "wt2", "replicate_2", "replicate2"],
+    "RPKM_rep3": ["rpkm_rep3", "rpkm_wt3", "rpkm_3", "rpkm3",
+                  "rep3", "wt3", "replicate_3", "replicate3"],
+    "RPKM_average": ["rpkm_average", "rpkm_avg", "average_rpkm", "avg_rpkm",
+                     "mean_rpkm", "rpkm_mean", "average", "mean"],
+}
+
+
+def _read_expression_table(path: Path) -> pd.DataFrame:
+    """Dispatch to the right pandas reader based on file extension."""
+    ext = path.suffix.lower()
+    if ext in (".xlsx", ".xls"):
+        return pd.read_excel(path)
+    if ext == ".csv":
+        # Quoted commas in numbers (e.g. "1,503.54") survive read_csv when the
+        # field is properly quoted; we coerce them later.
+        return pd.read_csv(path)
+    if ext in (".tsv", ".txt"):
+        return pd.read_csv(path, sep="\t")
+    # Last-ditch: sniff the delimiter
+    try:
+        return pd.read_csv(path, sep=None, engine="python")
+    except Exception as exc:
+        raise ValueError(
+            f"Cannot determine format of {path}. "
+            f"Supported extensions: .xlsx, .xls, .csv, .tsv, .txt"
+        ) from exc
+
+
+def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename column variants to the canonical schema (in-place safe copy)."""
+    lower_to_actual = {c.lower().strip(): c for c in df.columns}
+    rename_map: dict[str, str] = {}
+    for canonical, aliases in EXPRESSION_COLUMN_ALIASES.items():
+        for alias in aliases:
+            if alias in lower_to_actual:
+                actual = lower_to_actual[alias]
+                if actual != canonical:
+                    rename_map[actual] = canonical
+                break
+    if rename_map:
+        df = df.rename(columns=rename_map)
+        logger.info("Renamed expression columns: %s", rename_map)
+    return df
+
+
+def _coerce_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Strip thousands separators and coerce to float; drop unparseable rows."""
+    df = df.copy()
+    for col in columns:
+        # Strip commas/whitespace for any non-numeric column (handles object,
+        # pandas StringDtype, mixed types). Pure numeric columns pass through.
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    n_dropped = int(df[columns].isna().any(axis=1).sum())
+    if n_dropped:
+        logger.warning(
+            "Dropped %d row(s) with non-numeric expression values", n_dropped
+        )
+        df = df.dropna(subset=columns).reset_index(drop=True)
+    return df
+
 
 def parse_genbank(filepath: str | os.PathLike) -> dict[str, dict]:
     """Parse a GenBank file and extract valid CDS features.
@@ -156,50 +231,59 @@ def parse_genbank(filepath: str | os.PathLike) -> dict[str, dict]:
 
 
 def parse_expression_data(filepath: str | os.PathLike) -> pd.DataFrame:
-    """Parse an RNA-seq Excel file with fixed column structure.
+    """Parse an RNA-seq expression file (xlsx / xls / csv / tsv / txt).
 
-    Required columns (exact names): ``locus_tag``, ``RPKM_rep1``, ``RPKM_rep2``,
-    ``RPKM_rep3``, ``RPKM_average``. Additional columns are kept.
+    Required columns (canonical names): ``locus_tag``, ``RPKM_rep1``,
+    ``RPKM_rep2``, ``RPKM_rep3``, ``RPKM_average``.
+
+    Common variants are auto-renamed before validation:
+      * Replicate columns: ``RPKM_WT1``/``WT1``/``rep1``/``replicate_1`` →
+        ``RPKM_rep1`` (and similarly for 2, 3).
+      * Average column: ``RPKM_avg``/``mean_rpkm``/``average`` →
+        ``RPKM_average``.
+      * Locus column: ``locus``/``gene_id``/``geneid``/``gene`` →
+        ``locus_tag``.
+
+    Numeric columns may contain thousands separators (``"1,503.54"``);
+    they are stripped automatically. Rows with unparseable expression
+    values are dropped with a logged warning.
 
     Args:
-        filepath: Path to a ``.xlsx`` file.
+        filepath: Path to ``.xlsx``, ``.xls``, ``.csv``, ``.tsv``, or
+            ``.txt`` (tab-separated).
 
     Returns:
         DataFrame sorted by ``RPKM_average`` descending.
 
     Raises:
         FileNotFoundError: If ``filepath`` does not exist.
-        ValueError: If required columns are missing or contain non-numeric /
-            negative expression values.
+        ValueError: If required columns cannot be resolved after aliasing,
+            or any expression value is negative.
     """
     path = Path(filepath)
     if not path.exists():
         raise FileNotFoundError(f"Expression file not found: {filepath}")
 
-    df = pd.read_excel(path)
+    df = _read_expression_table(path)
+    df = _canonicalize_columns(df)
+
     missing = [c for c in REQUIRED_EXPRESSION_COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(
-            f"Expression file {filepath} missing required columns: {missing}"
+            f"Expression file {filepath} missing required columns: {missing}.\n"
+            f"Found columns: {list(df.columns)}.\n"
+            f"Recognized aliases for each canonical column:\n"
+            + "\n".join(f"  {k}: {v}" for k, v in EXPRESSION_COLUMN_ALIASES.items())
         )
 
-    if df.columns[0] != "locus_tag":
-        raise ValueError(
-            f"Expression file first column must be 'locus_tag', got '{df.columns[0]}'"
-        )
-    if df.columns[-1] != "RPKM_average":
-        # Allow extra cols after average? Spec says last must be RPKM_average.
-        # We enforce strictly per spec.
-        raise ValueError(
-            f"Expression file last column must be 'RPKM_average', got '{df.columns[-1]}'"
-        )
+    df = _coerce_numeric(df, ["RPKM_rep1", "RPKM_rep2", "RPKM_rep3", "RPKM_average"])
 
     for col in ["RPKM_rep1", "RPKM_rep2", "RPKM_rep3", "RPKM_average"]:
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            raise ValueError(f"Column {col} must be numeric in {filepath}")
         if (df[col] < 0).any():
             raise ValueError(f"Column {col} contains negative values in {filepath}")
 
+    df["locus_tag"] = df["locus_tag"].astype(str).str.strip()
+    df = df[REQUIRED_EXPRESSION_COLUMNS]  # canonical column order
     df = df.sort_values("RPKM_average", ascending=False).reset_index(drop=True)
     return df
 

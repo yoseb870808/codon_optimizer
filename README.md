@@ -146,18 +146,28 @@ handled.
 
 ### RNA-seq expression (`--rnaseq`)
 
-Excel `.xlsx` with the exact columns, in this order:
+Any of `.xlsx`, `.xls`, `.csv`, `.tsv`, or `.txt` (tab-separated).
+Required columns:
 
 ```
 locus_tag | RPKM_rep1 | RPKM_rep2 | RPKM_rep3 | RPKM_average
 ```
 
+The parser auto-renames common alternates so most real-world files
+work without preprocessing:
+
+| Canonical | Aliases recognised (case-insensitive) |
+|---|---|
+| `locus_tag` | `locus`, `gene_id`, `geneid`, `gene`, `id`, `tag` |
+| `RPKM_rep1/2/3` | `RPKM_WT1/2/3`, `RPKM_1/2/3`, `WT1/2/3`, `replicate_1/2/3`, `rep1/2/3` |
+| `RPKM_average` | `RPKM_avg`, `mean_rpkm`, `average_rpkm`, `mean`, `average` |
+
+Numeric columns may contain thousands separators (`"1,503.54"`); they
+are stripped automatically. Rows with unparseable values are dropped
+with a logged warning.
+
 Locus tags must match the GenBank CDS tags. Match rate < 80 % triggers
 a warning; < 10 % is fatal (almost certainly a file mismatch).
-
-Need to reshape an RNA-seq file that doesn't match this schema? Rename
-the replicate columns to `RPKM_rep1` / `RPKM_rep2` / `RPKM_rep3`,
-strip thousands separators, and re-export to `.xlsx`.
 
 ### Target sequences (`--target`)
 

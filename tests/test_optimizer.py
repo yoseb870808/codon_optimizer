@@ -73,9 +73,12 @@ class TestWeighted:
         v = optimize(short_protein, host_cut, mode="weighted", n_variants=3, host_gc=0.5, seed=0)
         assert len(v) == 3
 
-    def test_different_seeds_differ(self, host_cut, short_protein):
-        v1 = optimize(short_protein, host_cut, mode="weighted", n_variants=3, host_gc=0.5, seed=1)
-        v2 = optimize(short_protein, host_cut, mode="weighted", n_variants=3, host_gc=0.5, seed=2)
+    def test_different_seeds_differ(self, host_cut):
+        # Use a longer protein so the synonym-space is large enough that two
+        # seeds reliably produce different recommended sequences.
+        protein = "MKFLILVASAGTTLMITGNPKLRDEWYQHCFSAGTTLMITGNPKLRDEWY"
+        v1 = optimize(protein, host_cut, mode="weighted", n_variants=3, host_gc=0.5, seed=1)
+        v2 = optimize(protein, host_cut, mode="weighted", n_variants=3, host_gc=0.5, seed=2)
         seqs1 = {x["dna_sequence"] for x in v1}
         seqs2 = {x["dna_sequence"] for x in v2}
         assert seqs1 != seqs2

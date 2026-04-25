@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-04-25
+
+### Added
+- **RNA-seq parser accepts more file formats and column names.**
+  - File extensions: `.xlsx`, `.xls`, `.csv`, `.tsv`, `.txt` (tab-separated).
+    Previously `.xlsx` only.
+  - Column auto-rename for common alternates (`RPKM_WT1` → `RPKM_rep1`,
+    `gene_id` → `locus_tag`, `mean_rpkm` → `RPKM_average`, etc.).
+    Full alias map in `EXPRESSION_COLUMN_ALIASES`.
+  - Thousands separators (`"1,503.54"`) are stripped automatically.
+  - Helpful error message that lists all recognized aliases when a
+    required column can't be resolved.
+- 6 new tests covering txt/csv parsing, column aliasing, and comma
+  stripping (`test_input_handler.py`).
+
+### Fixed
+- `_coerce_numeric` now handles pandas 3.x `StringDtype` columns, not
+  just legacy `object` dtype.
+- `test_different_seeds_differ` now uses a longer protein so the
+  reproducibility check is statistically robust.
+
 ## [0.4.0] — 2026-04-25
 
 ### Safety
