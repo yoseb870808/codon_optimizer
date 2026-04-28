@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-04-28
+
+### Fixed
+- **CI red on Python 3.10 / 3.11**:
+  ``optimizer/report_generator.py`` had ``strftime("…")`` calls nested
+  inside f-strings using the same quote character. PEP 701 lifted that
+  restriction in 3.12, so 3.10 and 3.11 raised ``SyntaxError`` at module
+  import — taking down 6 of 12 GitHub Actions jobs. Fixed by extracting
+  the timestamp into a local before each f-string.
+- **Non-deterministic seeds across processes.**
+  ``sequence_optimizer._derive_seed`` mixed in ``hash(salt)``, which
+  Python randomizes per process under the default
+  ``PYTHONHASHSEED=random``. Replaced with ``zlib.crc32`` so child
+  seeds are stable across runs, processes, and platforms.
+- **``simulated_anneal`` crash on minimal CDS.**
+  When ``mutable_positions`` was empty (one-codon CDS, or
+  ``window // 3 == 1``), ``rng.choice([])`` raised ``ValueError``.
+  Now returns the input unchanged with ``attempts=0``.
+- **``KeyError`` in motif repair when motif dict omits ``"name"``.**
+  ``_compile_motifs`` already fell back to the pattern; the filter path
+  in ``repair_sequence`` did not. Extracted ``_motif_label`` helper and
+  used it in both places.
+
+### Docs
+- ``CLAUDE.md``, ``CONTRIBUTING.md``, ``architecture.md``, and
+  ``test_plan.md`` no longer mention a ViennaRNA fallback. The runtime
+  has required ViennaRNA since 0.3.0; the docs now match.
+
+### Tests
+- 6 new regression tests in ``tests/test_regressions.py``, including a
+  cross-process subprocess test that pins ``_derive_seed`` stability
+  against any future reintroduction of ``hash()``.
+
 ## [0.4.1] — 2026-04-25
 
 ### Added
