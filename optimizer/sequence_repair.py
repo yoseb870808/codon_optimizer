@@ -41,11 +41,19 @@ class MotifHit:
     strand: str  # "+" or "-"
 
 
+def _motif_label(m: dict) -> str:
+    """Resolve a motif's display name with the same fallback rule as
+    :func:`_compile_motifs`. Used wherever motif lists are filtered or
+    cross-referenced by name without going through ``_compile_motifs``.
+    """
+    return m.get("name", m.get("pattern", "?"))
+
+
 def _compile_motifs(motifs: Iterable[dict]) -> list[dict]:
     """Return motifs as ``(name, compiled_regex, scan_rc)`` tuples."""
     compiled: list[dict] = []
     for m in motifs:
-        name = m.get("name", m.get("pattern", "?"))
+        name = _motif_label(m)
         pattern = m["pattern"]
         if not m.get("regex", False):
             pattern = re.escape(pattern.upper())
@@ -201,7 +209,7 @@ def repair_sequence(
                     window_end = min(len(dna_now), (last_codon + 1) * 3 + 5)
                     local = "".join(codons)[window_start:window_end]
                     still_hits = find_motifs(local, [
-                        m for m in motifs if m["name"] == hit.motif_name
+                        m for m in motifs if _motif_label(m) == hit.motif_name
                     ])
                     if not still_hits:
                         solved = True

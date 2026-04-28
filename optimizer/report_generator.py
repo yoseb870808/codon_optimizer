@@ -151,8 +151,9 @@ def write_cut_tsv(
     out = _ensure_dir(output_dir)
     path = out / "codon_usage_table.tsv"
 
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     header_lines = [
-        f"# Codon Usage Table generated {datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")}Z",
+        f"# Codon Usage Table generated {timestamp}Z",
         f"# Reference mode: {reference_info.get('mode', 'unknown')}",
         f"# Reference genes: {reference_info.get('n_genes', 'unknown')}",
         f"# Total CDS in genome: {reference_info.get('n_total_cds', 'unknown')}",
@@ -197,7 +198,8 @@ def write_summary_md(
     lines: list[str] = []
     lines.append("# Codon Optimizer — Run Summary")
     lines.append("")
-    lines.append(f"_Generated {datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")}Z_")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    lines.append(f"_Generated {timestamp}Z_")
     lines.append("")
 
     # Run parameters

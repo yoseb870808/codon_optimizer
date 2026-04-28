@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import zlib
 from typing import Any
 
 import numpy as np
@@ -203,11 +204,17 @@ def optimize(
 
 
 def _derive_seed(base_seed: int | None, index: int, salt: str = "") -> int | None:
-    """Derive a deterministic child seed from ``(base_seed, index, salt)``."""
+    """Derive a deterministic child seed from ``(base_seed, index, salt)``.
+
+    Uses :func:`zlib.crc32` on the salt rather than Python's built-in
+    :func:`hash`, because string hashing is randomized per process under
+    ``PYTHONHASHSEED=random`` (the default since 3.3). CRC32 gives stable
+    output across runs, processes, and platforms.
+    """
     if base_seed is None:
         return None
-    # Cheap mixing; stable across runs
-    mix = (base_seed * 2654435761) ^ (index * 40503) ^ (hash(salt) & 0xFFFFFFFF)
+    salt_hash = zlib.crc32(salt.encode("utf-8")) & 0xFFFFFFFF
+    mix = (base_seed * 2654435761) ^ (index * 40503) ^ salt_hash
     return mix & 0x7FFFFFFF
 
 

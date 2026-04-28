@@ -74,7 +74,7 @@ After all modules are built and tested individually, run a **full integration te
 
 ### ALWAYS do these:
 - **Write tests first** for edge cases listed in `test_plan.md`, then implement to pass them.
-- **Handle the ViennaRNA optional dependency** gracefully. The tool must work fully without it (fallback to simple hairpin detection). Use try/except import.
+- **ViennaRNA is mandatory.** `optimizer/quality_control.py` imports `RNA` at module load and raises `ImportError` with install instructions if missing. Do not add a fallback path or wrap the import in `try/except`.
 - **Use type hints** on all function signatures.
 - **Write docstrings** for all public functions (Google style).
 - **Log warnings** for recoverable issues (few locus_tag matches, short reference set, etc.) using Python `logging` module.
@@ -105,7 +105,7 @@ After all modules are built and tested individually, run a **full integration te
   - input_handler: all input formats + all error cases
   - reference_builder: both modes (RNA-seq and housekeeping fallback)
   - sequence_optimizer: all 3 modes (max_cai, weighted, harmonized)
-  - quality_control: all QC checks including ViennaRNA fallback
+  - quality_control: all QC checks (ViennaRNA mandatory)
   - metrics: CAI calculation verified against known values
   - report_generator: output file existence and format validation
 - Create test fixtures during the build (mock .gbk, .xlsx, .fasta files) — do NOT rely on any user-supplied real biological data for tests
@@ -118,7 +118,7 @@ See `requirements.txt` for the full list. Key constraints:
 - `biopython` for GenBank/FASTA parsing
 - `pandas` + `openpyxl` for Excel I/O
 - `numpy` for stochastic sampling
-- `ViennaRNA` for mRNA structure (optional, graceful fallback)
+- `ViennaRNA` for mRNA structure (mandatory — pipeline imports `RNA` at startup)
 - `pyyaml` for config
 - `pytest` for testing
 
@@ -182,6 +182,6 @@ Every `.py` file must be importable without errors. Every test must pass. `pytho
 [ ] output/ contains: FASTA, report TSV, CUT TSV, comparison TSV, summary MD
 [ ] README.md exists with installation + usage instructions
 [ ] No hardcoded organism names anywhere in optimizer/
-[ ] ViennaRNA import failure handled gracefully (tool still works)
+[ ] ViennaRNA import is mandatory — failure raises a clear ImportError with install instructions
 [ ] All public functions have type hints + docstrings
 ```

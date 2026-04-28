@@ -40,7 +40,7 @@
 │  - check_gc_content()           │   GC overall + sliding window
 │  - check_homopolymers()         │   Runs of identical bases
 │  - check_repeats()              │   Direct repeats
-│  - check_mrna_structure()       │   5' MFE via ViennaRNA (or fallback)
+│  - check_mrna_structure()       │   5' MFE via ViennaRNA (mandatory)
 │  - run_all_qc()                 │
 └────────────┬───────────────────┘
              │
@@ -492,23 +492,18 @@ def check_mrna_structure(
     """
     Assess mRNA secondary structure in the 5' region.
 
-    Primary method (ViennaRNA installed):
-        Import RNA module from ViennaRNA
-        Calculate MFE of first `window_5prime` nucleotides using RNA.fold()
-        Report MFE, structure string, and flag if MFE < threshold
+    ViennaRNA is mandatory — the module imports ``RNA`` at load time and
+    raises ``ImportError`` with install instructions if it is unavailable.
 
-    Fallback (ViennaRNA not installed):
-        Scan for palindromic sequences (potential hairpin stems) in first 150 nt
-        Report count and locations of potential hairpins
-        Set has_strong_structure = True if any palindrome > 8 bp found
+        Calculate MFE of first ``window_5prime`` nucleotides using RNA.fold()
+        Report MFE, structure string, and flag if MFE < threshold
 
     Returns:
     {
-        "method": "viennarna" | "fallback",
+        "method": "viennarna",
         "mfe": float or None,
         "structure": str or None,
         "has_strong_structure": bool,
-        "hairpins": list (fallback only),
         "warning": str or None
     }
     """

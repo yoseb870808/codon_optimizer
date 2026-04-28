@@ -269,6 +269,15 @@ def simulated_anneal(
     cai = calculate_cai(dna, codon_table)
     initial_cai = cai
 
+    # No mutable codon (e.g. CDS is one codon long, or window // 3 == 1):
+    # nothing to optimize. Return unchanged with attempts=0.
+    if not mutable_positions:
+        return dna, RepairResult(
+            dna=dna, initial_mfe=initial_mfe, final_mfe=mfe,
+            initial_cai=initial_cai, final_cai=cai,
+            attempts=0, succeeded=mfe > mfe_threshold, method="annealing",
+        )
+
     def energy(mfe_val: float, cai_val: float) -> float:
         struct_pen = max(0.0, mfe_threshold - mfe_val)
         cai_pen = cai_lambda * max(0.0, 1.0 - cai_val)

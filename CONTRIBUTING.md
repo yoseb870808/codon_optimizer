@@ -52,8 +52,9 @@ python -m pytest tests/ -v
   arbitrary GenBank.
 - Do not invent biological data in tests. Test fixtures are synthetic
   (e.g., `GENE_001`, `MOCK001`).
-- Optional dependencies (like ViennaRNA) must degrade gracefully —
-  import inside a try/except, expose a fallback.
+- ViennaRNA is a mandatory runtime dependency. The pipeline imports
+  ``RNA`` at startup and raises a clear ``ImportError`` if missing — do
+  not reintroduce a try/except fallback.
 - Input validation fails fast with a clear, actionable message.
 
 ## Commit messages

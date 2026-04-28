@@ -116,8 +116,7 @@ ATGAAATTTTTAATTTTAATTGCATCAGCAGGTACAACATTAATGATTACAGGTAATCCAAAATTAAGAGATGAATGGTA
 | Repeat detection | "ATGATGATGATG" with 12+ bp repeat downstream | Detected |
 | Repeat none | Non-repetitive sequence | Empty list |
 | mRNA structure (ViennaRNA) | GC-rich 5' region | MFE reported, possibly flagged |
-| mRNA structure (fallback) | Palindromic 5' sequence | Hairpin detected |
-| mRNA structure (fallback) | Non-structured 5' | No hairpin |
+| mRNA structure (ViennaRNA missing) | Import fails at module load | ImportError with install instructions (no fallback) |
 | run_all_qc | Clean sequence | pass = True |
 | run_all_qc | Sequence with homopolymer | pass = False, homopolymer reported |
 
